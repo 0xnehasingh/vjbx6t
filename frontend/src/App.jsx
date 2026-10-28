@@ -47,14 +47,18 @@ export default function App() {
           <h1>Wind Generation Forecast Monitor</h1>
           <p className="subtitle">UK national wind generation: forecast vs actual</p>
         </div>
-        {data?.isSample && <span className="sample-badge">Sample data</span>}
+        {data?.isSample ? (
+          <span className="sample-badge">Sample data</span>
+        ) : (
+          data && <span className="live-badge">Live data</span>
+        )}
       </header>
 
       <Controls {...params} onChange={(patch) => setParams((p) => ({ ...p, ...patch }))} />
 
-      {error && (
+      {(error || data?.warning) && (
         <div className="alert" role="alert">
-          <span>{error}</span>
+          <span>{error || data.warning}</span>
           <button type="button" onClick={() => setReloadKey((k) => k + 1)}>Try again</button>
         </div>
       )}
@@ -88,7 +92,9 @@ export default function App() {
 
       <footer className="footer">
         All times are UTC. Data covers January 2026.
-        {m && m.coverage != null && ` Forecast available for ${Math.round(m.coverage * 100)}% of points.`}
+        {data && !data.isSample && " Source: Elexon BMRS (FUELHH actuals, WINDFOR forecasts)."}
+        {m && m.coverage != null && ` A forecast was available for ${Math.round(m.coverage * 100)}% of the times shown.`}
+        {m && m.coverage < 1 && " (Very long horizons have fewer forecasts.)"}
       </footer>
     </div>
   );
