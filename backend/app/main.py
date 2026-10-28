@@ -1,8 +1,9 @@
 """FastAPI app: health check and the wind time series."""
-from typing import Optional
+import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import service
 from .elexon import ElexonError
@@ -31,3 +32,10 @@ def timeseries(
         return service.get_timeseries(start_dt, end_dt, horizon)
     except ElexonError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+# In Docker, the built React app is served by this same server.
+# STATIC_DIR is set in the Dockerfile. On Vercel it is not set, because Vercel serves the files.
+_static_dir = os.environ.get("STATIC_DIR")
+if _static_dir and os.path.isdir(_static_dir):
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
