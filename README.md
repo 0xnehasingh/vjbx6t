@@ -221,7 +221,7 @@ The app is deployed on Vercel. The Vercel project is connected to this GitHub re
 
 ## AI tools used
 
-I used Claude and ChatGPT as assistants for:
+I used Claude and Cursor as AI assistants for:
 
 - **Coding assistance:** scaffolding, writing and debugging parts of the frontend and backend.
 - **Design and logo:** UI layout ideas and the WindFlow logo.
