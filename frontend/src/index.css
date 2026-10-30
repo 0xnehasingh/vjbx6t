@@ -793,25 +793,14 @@ button:hover {
   }
 }
 
-/* Animated background: one fixed decorative layer behind all content */
+/* Aurora background: one fixed decorative layer behind all content */
 .bg-fx {
   position: fixed;
   inset: 0;
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-  background: var(--bg);
-}
-
-.bg-fx-gradient {
-  position: absolute;
-  inset: -20%;
-  background:
-    radial-gradient(55% 45% at 20% 25%, rgba(20, 184, 166, 0.16), transparent 70%),
-    radial-gradient(50% 50% at 80% 70%, rgba(30, 64, 120, 0.22), transparent 70%),
-    radial-gradient(45% 40% at 60% 10%, rgba(56, 189, 248, 0.07), transparent 70%);
-  animation: bg-fx-drift 48s ease-in-out infinite alternate;
-  will-change: transform;
+  background: linear-gradient(180deg, #0a1733 0%, #070d1f 38%, #04070f 70%, #020306 100%);
 }
 
 .bg-fx-canvas {
@@ -821,17 +810,11 @@ button:hover {
   height: 100%;
 }
 
-@keyframes bg-fx-drift {
-  from {
-    transform: translate3d(-4%, -2%, 0) scale(1);
-  }
-  to {
-    transform: translate3d(4%, 3%, 0) scale(1.08);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bg-fx-gradient {
-    animation: none;
-  }
+/* Dims the aurora behind the content column; margins and header stay brightest */
+.bg-fx-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 600px), rgba(3, 6, 12, 0.32) calc(50% - 440px), rgba(3, 6, 12, 0.32) calc(50% + 440px), transparent calc(50% + 600px)),
+    linear-gradient(180deg, transparent 0, transparent 160px, rgba(3, 6, 12, 0.3) 420px, rgba(3, 6, 12, 0.6) 100%);
 }
