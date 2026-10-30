@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import service
 from .elexon import ElexonError
+from .selection import parse_cutoff
 
 app = FastAPI(title="Wind Generation Forecast Monitor API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
@@ -21,7 +22,9 @@ def health() -> dict:
 def timeseries(
     start: str = Query("2026-01-01", description="Start date or datetime (UTC)"),
     end: str = Query("2026-01-07", description="End date or datetime (UTC)"),
-    horizon: float = Query(4, ge=0, le=48, description="Forecast horizon in hours (0-48)"),
+    horizon: float = Query(4, ge=0, le=48, description="Forecast horizon in hours (0-48). Used when mode=horizon"),
+    mode: str = Query("horizon", description="horizon or dayahead"),
+    cutoff: str = Query("09:00", description="Day-ahead decision time on the day before, HH:MM (UTC = UK time in January)"),
 ) -> dict:
     try:
         start_dt = service.parse_input_time(start)
@@ -29,7 +32,12 @@ def timeseries(
     except ValueError:
         raise HTTPException(status_code=422, detail="start and end must be dates like 2026-01-05")
     try:
-        return service.get_timeseries(start_dt, end_dt, horizon)
+        mode_name = service.normalise_mode(mode)
+        cutoff_time = parse_cutoff(cutoff)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    try:
+        return service.get_timeseries(start_dt, end_dt, horizon, mode_name, cutoff_time)
     except ElexonError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
