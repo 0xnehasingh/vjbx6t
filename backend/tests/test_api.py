@@ -41,3 +41,15 @@ def test_bad_parameters_are_rejected(monkeypatch):
     assert client.get("/api/timeseries", params={"mode": "weekly"}).status_code == 422
     assert client.get("/api/timeseries", params={"mode": "dayahead", "cutoff": "25:99"}).status_code == 422
     assert client.get("/api/timeseries", params={"horizon": 49}).status_code == 422
+
+
+def test_horizon_accuracy_lists_every_horizon(monkeypatch):
+    fake_data(monkeypatch)
+    body = client.get("/api/horizon-accuracy", params={"start": "2026-01-05", "end": "2026-01-05"}).json()
+    rows = body["rows"]
+    assert [r["horizon"] for r in rows] == list(range(49))
+    # horizon 4: the 07:00 forecast (1100) is used. horizon 20: only the older 900 one (28 h lead) qualifies.
+    assert rows[4]["mae"] == 100  # |1100-1000| and |1100-1200|
+    assert rows[20]["coverage"] == 1 and rows[20]["mae"] == 200
+    assert rows[48]["count"] == 0 and rows[48]["mae"] is None
+    assert body["dayAhead"]["count"] == 2

@@ -85,6 +85,16 @@ def build_points(
     return points
 
 
+def _load(start: datetime, end: datetime) -> tuple[list[Actual], list[Forecast]]:
+    actuals_all = elexon.fetch_actuals("2026-01-01", "2026-01-31")
+    # Forecasts used for January targets can be published up to 48 h earlier.
+    forecasts_all = elexon.fetch_forecasts(
+        RANGE_START - timedelta(hours=MAX_HORIZON_HOURS + 24),
+        RANGE_END + timedelta(minutes=30) - timedelta(seconds=1),
+    )
+    return [a for a in actuals_all if start <= a.start_time <= end], forecasts_all
+
+
 def get_timeseries(
     start: datetime,
     end: datetime,
@@ -93,13 +103,7 @@ def get_timeseries(
     cutoff: time = DEFAULT_CUTOFF,
 ) -> dict:
     start, end = clamp_range(start, end)
-    actuals_all = elexon.fetch_actuals("2026-01-01", "2026-01-31")
-    # Forecasts used for January targets can be published up to 48 h earlier.
-    forecasts_all = elexon.fetch_forecasts(
-        RANGE_START - timedelta(hours=MAX_HORIZON_HOURS + 24),
-        RANGE_END + timedelta(minutes=30) - timedelta(seconds=1),
-    )
-    actuals = [a for a in actuals_all if start <= a.start_time <= end]
+    actuals, forecasts_all = _load(start, end)
     points = build_points(actuals, forecasts_all, horizon_hours, mode, cutoff)
     metrics = compute_metrics([(p["actual"], p["forecast"]) for p in points])
     return {
@@ -110,4 +114,29 @@ def get_timeseries(
         "cutoff": cutoff.strftime("%H:%M") if mode == MODE_DAY_AHEAD else None,
         "points": points,
         "metrics": metrics,
+    }
+
+
+def _summary(points: list[dict]) -> dict:
+    m = compute_metrics([(p["actual"], p["forecast"]) for p in points])
+    return {"mae": m["mae"], "rmse": m["rmse"], "coverage": m["coverage"], "count": m["count"]}
+
+
+def get_horizon_accuracy(start: datetime, end: datetime, cutoff: time = DEFAULT_CUTOFF) -> dict:
+    """Forecast error for every whole horizon from 0 to 48 h, over the chosen range.
+
+    Also returns the same numbers for the day-ahead rule, so the two can be compared.
+    """
+    start, end = clamp_range(start, end)
+    actuals, forecasts_all = _load(start, end)
+    rows = []
+    for h in range(0, MAX_HORIZON_HOURS + 1):
+        rows.append({"horizon": h, **_summary(build_points(actuals, forecasts_all, h))})
+    day_ahead = _summary(build_points(actuals, forecasts_all, 0, MODE_DAY_AHEAD, cutoff))
+    return {
+        "start": _iso(start),
+        "end": _iso(end),
+        "cutoff": cutoff.strftime("%H:%M"),
+        "rows": rows,
+        "dayAhead": day_ahead,
     }
