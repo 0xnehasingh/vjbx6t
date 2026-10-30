@@ -1,4 +1,8 @@
-# Wind Generation Forecast Monitor
+# WindFlow
+
+<img src="frontend/public/windflow-logo.png" alt="WindFlow logo" width="96" />
+
+_UK wind forecast vs actual, January 2026._
 
 A web app that compares **UK national wind power forecasts** with **actual generation** for January 2026. It helps a power buyer see how good the forecasts are, and which forecast was available when a day-ahead decision had to be made.
 
@@ -13,12 +17,17 @@ A UK utility buys power the day before. To do this, it needs:
 
 ## Features
 
-- Line chart of **actual** and **forecast** wind generation (MW), with legend and tooltip.
-- **Forecast horizon slider** from 0 to 48 hours (default 4 hours).
-- **Date range picker**, limited to January 2026.
-- Metric cards: average forecast, average actual, difference, MAE, RMSE and P90 error.
-- Dark theme, works on phone, tablet and desktop.
-- Loading and error states. If the API is down, the app shows **sample data** with a visible "Sample data" badge.
+- **Actual vs forecast chart** (MW) with legend, a tooltip (actual, forecast, error, forecast publish time and age) and optional **gap shading**: amber where the forecast was too high, blue where it was too low. Where no forecast was old enough, the forecast line is left blank.
+- **Two ways to choose the forecast** (toggle at the top):
+  - **Horizon**: a slider from 0 to 48 hours (default 4). Uses the latest forecast published at least that long before each time.
+  - **Day-ahead**: pick a decision time on the day before (default 09:00 UTC, with quick choices 08:00 to 12:00 and a time box). For every time on day D, uses the latest forecast published at or before that time on day D-1.
+- **Date and time range** (From / To), clamped to 1 Jan 00:00 to 31 Jan 23:30 2026 and labelled UTC, plus quick ranges: Week 1 to Week 4, Full month and Single day.
+- **Plain-English summary** of the result, for example "the forecast ran high by 1,365 MW on average ... a buffer of about 4,164 MW would have covered 9 in 10 half-hours".
+- **Metric cards** with units, a one-line caption and a tooltip in plain words: average actual, average forecast, difference, MAE (with the miss as a share of typical output), RMSE, P90 error (suggested buffer) and coverage.
+- **More views of the same data**: error by forecast horizon (0 to 48 h, with the day-ahead result as a reference line), a histogram of the errors with P10, median and P90 markers, error by hour of day, and a table of the ten biggest misses.
+- **Clear empty state**: at a horizon of 48 h almost no forecast is old enough, so the app says so, shows only the actuals and offers a shorter horizon.
+- Dark theme, responsive layout for phone, tablet and desktop, loading skeletons, the previous result stays on screen while new data loads, and slider changes are debounced.
+- If the API is down, the app shows **sample data** with a visible "Sample data" badge.
 
 ## Data
 
@@ -33,6 +42,8 @@ All times are in UTC.
 
 ## How the forecast is chosen
 
+### Horizon mode
+
 For every time **T** on the chart, the app picks one forecast:
 
 - The forecast must have been **published at least `horizon` hours before T** (`publishTime <= T - horizon`). This way, nothing from the future is used.
@@ -41,10 +52,20 @@ For every time **T** on the chart, the app picks one forecast:
 
 Example with a 4 hour horizon: for T = 12:00, a forecast published at 07:30 can be used, but one published at 09:00 cannot.
 
+### Day-ahead mode
+
+A buyer who commits to power the day before has to decide at a fixed time. For every time **T** on day **D**:
+
+- The forecast must have been **published at or before the decision time on day D-1** (default 09:00).
+- Forecasts published **more than 48 hours before T** are still ignored.
+- From the forecasts that are left, the app takes the **latest published** one.
+
+The decision time is in UTC. In January the UK is on GMT, so it is the same as UK local time. Every time on the same day uses the same decision time, so later times on day D are forecast further ahead (for example, a 09:00 decision is about 15 h ahead of 00:00 on day D and about 38 h ahead of 23:00).
+
 Notes:
 
 - Actuals are every 30 minutes and forecasts are every hour, so both half-hours of an hour share the same forecast.
-- With a very long horizon (about 44 hours or more) fewer forecasts qualify, so some times have no forecast. The footer shows the share of times that have a forecast (coverage). At exactly 48 hours there is almost no forecast left.
+- With a very long horizon (about 44 hours or more) fewer forecasts qualify, so some times have no forecast. The footer shows the share of times that have a forecast (coverage). At exactly 48 hours there is almost no forecast left, so the app shows an explanation instead of an empty chart.
 
 ## The metrics, in simple words
 
@@ -64,7 +85,7 @@ Only times that have both an actual value and a forecast are used. "Error" means
 ```
 Browser (React + Vite + Recharts)
         |
-        |  GET /api/timeseries?start=&end=&horizon=
+        |  GET /api/timeseries?start=&end=&mode=&horizon=&cutoff=
         v
 FastAPI backend (Python)
    |-- elexon.py     calls Elexon (FUELHH, WINDFOR) and caches the answers in memory
@@ -79,11 +100,23 @@ FastAPI backend (Python)
 ### API
 
 - `GET /api/health` returns `{"status": "ok"}`.
-- `GET /api/timeseries?start=2026-01-01&end=2026-01-07&horizon=4` returns:
-  - `points`: a list of `{startTime, actual, forecast, publishTime, horizonHours}`
-  - `metrics`: `meanActual, meanForecast, difference, mae, rmse, p90AbsError, coverage, count`
+- `GET /api/timeseries` returns the chart data and metrics.
 
-Dates outside January 2026 are cut to January 2026. `horizon` must be between 0 and 48.
+  | Parameter | Meaning |
+  | --- | --- |
+  | `start`, `end` | A date (`2026-01-05`) or a UTC date and time (`2026-01-05T09:30:00Z`). A date-only `end` means the end of that day. Default `2026-01-01` to `2026-01-07`. |
+  | `mode` | `horizon` (default) or `dayahead`. |
+  | `horizon` | Hours, 0 to 48, default 4. Used when `mode=horizon`. |
+  | `cutoff` | Decision time on the day before, `HH:MM` in UTC, default `09:00`. Used when `mode=dayahead`. |
+
+  Example: `/api/timeseries?start=2026-01-01&end=2026-01-07&mode=dayahead&cutoff=09:00`
+
+  The answer has `start`, `end`, `mode`, `horizon`, `cutoff`, then:
+  - `points`: a list of `{startTime, actual, forecast, publishTime, horizonHours, decisionTime}` (`decisionTime` is set in day-ahead mode only)
+  - `metrics`: `meanActual, meanForecast, difference, mae, rmse, p90AbsError, coverage, count`
+- `GET /api/horizon-accuracy?start=&end=&cutoff=09:00` returns the error for every whole horizon from 0 to 48 h (`rows`: `horizon, mae, rmse, coverage, count`) and the same numbers for the day-ahead rule (`dayAhead`).
+
+Dates outside January 2026 are cut to January 2026. `horizon` must be between 0 and 48, and `cutoff` must look like `09:00`. Bad values get a 422 answer.
 
 ## Files and folders
 
@@ -98,20 +131,25 @@ Dates outside January 2026 are cut to January 2026. `horizon` must be between 0 
 │       ├── App.jsx            # Page layout and data loading
 │       ├── index.css          # Styles (dark theme)
 │       ├── components/
-│       │   ├── WindChart.jsx  # Recharts line chart
+│       │   ├── WindChart.jsx  # Actual vs forecast chart with gap shading
+│       │   ├── AccuracyCharts.jsx # Error by horizon, histogram, error by hour
+│       │   ├── WorstMisses.jsx    # Table of the ten biggest misses
 │       │   ├── MetricCard.jsx # One metric card with a tooltip
-│       │   └── Controls.jsx   # Date pickers and horizon slider
+│       │   ├── Panel.jsx, HowToRead.jsx
+│       │   └── Controls.jsx   # Mode toggle, horizon slider, day-ahead time, date range and presets
 │       └── lib/
 │           ├── api.js         # Calls /api/timeseries, falls back to sample data
 │           ├── mock.js        # Sample data generator
 │           ├── metrics.js     # Metrics for the sample data
+│           ├── stats.js       # Histogram, hour-of-day and worst-miss helpers
+│           ├── summary.js     # Plain-English summary text
 │           ├── format.js      # Number and date formatting
 │           └── constants.js   # January 2026 limits and defaults
 ├── backend/                   # Python backend (FastAPI)
 │   ├── app/
 │   │   ├── main.py            # FastAPI app and endpoints
 │   │   ├── elexon.py          # Elexon API client (httpx) with cache
-│   │   ├── selection.py       # Latest-forecast selection logic
+│   │   ├── selection.py       # Latest-forecast selection (horizon and day-ahead)
 │   │   ├── metrics.py         # Accuracy metrics
 │   │   ├── service.py         # Builds the time series answer
 │   │   └── models.py          # Small data classes
@@ -163,8 +201,8 @@ docker compose up --build
 Open http://localhost:8000. Or without compose:
 
 ```bash
-docker build -t wind-monitor .
-docker run -p 8000:8000 wind-monitor
+docker build -t windflow .
+docker run -p 8000:8000 windflow
 ```
 
 ## Tests
@@ -175,7 +213,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-The tests cover the forecast selection logic (horizon, the 48 hour limit, picking the latest one) and the metrics (MAE, RMSE, P90, coverage).
+The tests cover the forecast selection logic (horizon mode, day-ahead mode, the 48 hour limit, picking the latest one), the metrics (MAE, RMSE, P90, coverage) and the API parameters.
 
 ## Deploy
 
