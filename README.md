@@ -221,6 +221,10 @@ The app is deployed on Vercel. The Vercel project is connected to this GitHub re
 
 ## AI tools used
 
-AI coding assistants were used to help scaffold and write parts of the code. All code was reviewed by the author.
+I used Claude and ChatGPT as assistants for:
 
-_Author note (edit me): add which tools you used, what for, and what you changed or checked yourself._
+- **Coding assistance:** scaffolding, writing and debugging parts of the frontend and backend.
+- **Design and logo:** UI layout ideas and the WindFlow logo.
+- **Research:** understanding the Elexon FUELHH and WINDFOR datasets and forecast-accuracy metrics.
+
+I reviewed the code, checked the results against Elexon's live data, and made the final design decisions myself.
