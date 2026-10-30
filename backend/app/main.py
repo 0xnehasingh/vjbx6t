@@ -9,7 +9,7 @@ from . import service
 from .elexon import ElexonError
 from .selection import parse_cutoff
 
-app = FastAPI(title="Wind Generation Forecast Monitor API")
+app = FastAPI(title="WindFlow API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 
 
