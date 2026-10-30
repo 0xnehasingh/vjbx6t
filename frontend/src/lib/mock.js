@@ -4,6 +4,7 @@ import { computeMetrics } from "./metrics.js";
 
 const HALF_HOUR = 30 * 60 * 1000;
 const HOUR = 2 * HALF_HOUR;
+const MAX_HORIZON = 48;
 const JAN_START = Date.UTC(2026, 0, 1);
 
 // Small seeded random number generator (mulberry32)
@@ -39,19 +40,48 @@ function forecastAt(hourMs, horizon) {
   return Math.min(21000, Math.max(500, base + bias + gauss(seed) * sigma));
 }
 
-export function generateMock({ start, end, horizon }) {
-  const from = Date.parse(`${start}T00:00:00Z`);
-  const to = Date.parse(`${end}T23:30:00Z`);
+const toMs = (s) => Date.parse(`${s}:00Z`);
+const hhmmToHours = (s) => Number(s.slice(0, 2)) + Number(s.slice(3, 5)) / 60;
+
+// For one hour, which forecast would the chosen rule have used? Returns its age in hours.
+function leadFor(hourMs, mode, horizon, cutoff) {
+  if (mode !== "dayahead") return horizon;
+  const dayStart = Math.floor(hourMs / 86400000) * 86400000;
+  const decisionMs = dayStart - 86400000 + hhmmToHours(cutoff) * HOUR;
+  return (hourMs - decisionMs) / HOUR;
+}
+
+export function generateMock({ start, end, mode = "horizon", horizon = 4, cutoff = "09:00" }) {
+  const from = toMs(start);
+  const to = toMs(end);
   const points = [];
   for (let t = from; t <= to; t += HALF_HOUR) {
     const hourMs = Math.floor(t / HOUR) * HOUR;
+    const lead = leadFor(hourMs, mode, horizon, cutoff);
+    const publishMs = hourMs - lead * HOUR;
     points.push({
       startTime: new Date(t).toISOString(),
       actual: Math.round(actualAt(t)),
-      forecast: Math.round(forecastAt(hourMs, horizon)),
-      publishTime: new Date(hourMs - horizon * HOUR).toISOString(),
-      horizonHours: horizon,
+      forecast: lead > MAX_HORIZON ? null : Math.round(forecastAt(hourMs, lead)),
+      publishTime: lead > MAX_HORIZON ? null : new Date(publishMs).toISOString(),
+      horizonHours: lead > MAX_HORIZON ? null : lead,
+      decisionTime: mode === "dayahead" ? new Date(publishMs).toISOString() : null,
     });
   }
   return { points, metrics: computeMetrics(points) };
+}
+
+// Sample version of /api/horizon-accuracy (error for each whole horizon, 0-48 h).
+export function generateMockHorizonAccuracy({ start, end, cutoff = "09:00" }) {
+  const rows = [];
+  for (let h = 0; h <= MAX_HORIZON; h++) {
+    if (h === MAX_HORIZON) {
+      rows.push({ horizon: h, mae: null, rmse: null, coverage: 0, count: 0 });
+      continue;
+    }
+    const m = generateMock({ start, end, mode: "horizon", horizon: h }).metrics;
+    rows.push({ horizon: h, mae: m.mae, rmse: m.rmse, coverage: m.coverage, count: m.count });
+  }
+  const m = generateMock({ start, end, mode: "dayahead", cutoff }).metrics;
+  return { rows, dayAhead: { mae: m.mae, rmse: m.rmse, coverage: m.coverage, count: m.count } };
 }
